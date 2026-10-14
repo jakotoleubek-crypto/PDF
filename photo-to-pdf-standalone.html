@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Фото в PDF</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mu:#667085;--ac:#4f46e5;--acx:#fff;--bd:#d9dce6;--dg:#d92d20;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141a;--card:#1c1f28;--tx:#eef0f6;--mu:#9aa3b5;--ac:#7c83ff;--acx:#0d0f14;--bd:#343a49;--dg:#ff6b61}}
+:root[data-theme="dark"]{--bg:#12141a;--card:#1c1f28;--tx:#eef0f6;--mu:#9aa3b5;--ac:#7c83ff;--acx:#0d0f14;--bd:#343a49;--dg:#ff6b61}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
+main{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.6rem;margin:8px 0 4px}
+.sub{color:var(--mu);margin:0 0 18px}
+.drop{background:var(--card);border:2px dashed var(--bd);border-radius:16px;padding:32px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 8%,var(--card))}
+.drop b{display:block;font-size:1.1rem;margin-bottom:4px}
+.drop span{color:var(--mu);font-size:.92rem}
+.ico{font-size:2.2rem;display:block;margin-bottom:6px}
+.opts{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.opts label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--mu);flex:1 1 160px}
+select,input[type=text]{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin:16px 0}
+.it{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;position:relative}
+.it img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.num{position:absolute;top:6px;left:6px;background:var(--ac);color:var(--acx);border-radius:999px;font-size:.75rem;font-weight:700;padding:2px 8px}
+.bar{display:flex;justify-content:space-between;padding:4px}
+.bar button{background:none;border:0;color:var(--tx);font-size:1.05rem;padding:6px 8px;cursor:pointer;border-radius:8px}
+.bar button:hover{background:var(--bg)}
+.bar button.x{color:var(--dg)}
+.bar button:disabled{opacity:.3;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:600;border:0;border-radius:12px;padding:14px 22px;cursor:pointer;background:var(--ac);color:var(--acx);flex:1 1 200px}
+.btn.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd);flex:0 1 auto}
+.btn:disabled{opacity:.45;cursor:default}
+#msg{margin-top:14px;min-height:1.4em;color:var(--mu)}
+#msg.err{color:var(--dg)}
+#msg.ok{color:var(--ac);font-weight:600}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>📄 Фото в PDF</h1>
+  <p class="sub">Загрузите фотографии — получите один PDF-файл. Всё происходит в вашем браузере, фото никуда не отправляются.</p>
+
+  <div class="drop" id="drop" tabindex="0">
+    <span class="ico">🖼️</span>
+    <b>Нажмите или перетащите фото сюда</b>
+    <span>JPG, PNG, WebP и другие • можно выбрать сразу несколько</span>
+  </div>
+  <input type="file" id="file" accept="image/*" multiple class="hide">
+
+  <div class="opts">
+    <label>Размер страницы
+      <select id="size">
+        <option value="a4">A4</option>
+        <option value="fit">По размеру фото</option>
+      </select>
+    </label>
+    <label>Поля
+      <select id="margin">
+        <option value="0">Без полей</option>
+        <option value="8" selected>Маленькие</option>
+        <option value="15">Большие</option>
+      </select>
+    </label>
+    <label>Имя файла
+      <input type="text" id="name" value="photos" maxlength="60">
+    </label>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <div class="row">
+    <button class="btn" id="make" disabled>Создать PDF</button>
+    <button class="btn sec" id="clear" disabled>Очистить</button>
+  </div>
+  <div id="msg"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+  var items = []; // {url, name, file}
+  var $ = function(id){return document.getElementById(id)};
+  var drop=$('drop'), fileIn=$('file'), list=$('list'), make=$('make'), clearBtn=$('clear'), msg=$('msg');
+
+  function say(t, cls){ msg.textContent = t; msg.className = cls || ''; }
+
+  function add(files){
+    var n = 0;
+    Array.prototype.forEach.call(files, function(f){
+      if(f.type && f.type.indexOf('image/') === 0){
+        items.push({url: URL.createObjectURL(f), name: f.name, file: f}); n++;
+      }
+    });
+    if(!n) say('Выберите файлы-изображения.', 'err'); else say('');
+    render();
+  }
+
+  function render(){
+    list.innerHTML = '';
+    items.forEach(function(it, i){
+      var d = document.createElement('div'); d.className = 'it';
+      var img = document.createElement('img'); img.src = it.url; img.alt = it.name;
+      var num = document.createElement('div'); num.className = 'num'; num.textContent = i + 1;
+      var bar = document.createElement('div'); bar.className = 'bar';
+      function b(label, title, fn, dis, cls){
+        var e = document.createElement('button'); e.textContent = label; e.title = title;
+        e.disabled = !!dis; if(cls) e.className = cls; e.onclick = fn; bar.appendChild(e);
+      }
+      b('←','Раньше',function(){ move(i,-1); }, i===0);
+      b('✕','Удалить',function(){ URL.revokeObjectURL(it.url); items.splice(i,1); render(); }, false, 'x');
+      b('→','Позже',function(){ move(i,1); }, i===items.length-1);
+      d.appendChild(img); d.appendChild(num); d.appendChild(bar); list.appendChild(d);
+    });
+    make.disabled = clearBtn.disabled = items.length === 0;
+    make.textContent = items.length ? 'Создать PDF (' + items.length + ')' : 'Создать PDF';
+  }
+
+  function move(i, dir){
+    var j = i + dir; if(j < 0 || j >= items.length) return;
+    var t = items[i]; items[i] = items[j]; items[j] = t; render();
+  }
+
+  drop.onclick = function(){ fileIn.click(); };
+  drop.onkeydown = function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fileIn.click(); } };
+  fileIn.onchange = function(){ add(fileIn.files); fileIn.value = ''; };
+  ['dragenter','dragover'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave','drop'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function(e){ if(e.dataTransfer) add(e.dataTransfer.files); });
+  clearBtn.onclick = function(){ items.forEach(function(i){ URL.revokeObjectURL(i.url); }); items = []; say(''); render(); };
+
+  // Загрузка изображения -> JPEG (белый фон, уменьшение очень больших фото)
+  function toJpeg(it){
+    return new Promise(function(res, rej){
+      var im = new Image();
+      im.onload = function(){
+        var w = im.naturalWidth, h = im.naturalHeight, max = 3000;
+        var k = Math.min(1, max / Math.max(w, h));
+        var cw = Math.round(w * k), ch = Math.round(h * k);
+        var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+        var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,cw,ch); x.drawImage(im,0,0,cw,ch);
+        res({data: c.toDataURL('image/jpeg', 0.92), w: cw, h: ch});
+      };
+      im.onerror = function(){ rej(new Error('Не удалось прочитать «' + it.name + '»')); };
+      im.src = it.url;
+    });
+  }
+
+  make.onclick = async function(){
+    if(!window.jspdf){ say('Библиотека PDF не загрузилась. Обновите страницу.', 'err'); return; }
+    make.disabled = true; clearBtn.disabled = true;
+    try{
+      var A4 = [210, 297], mode = $('size').value, m = parseFloat($('margin').value);
+      var doc = null;
+      for(var i = 0; i < items.length; i++){
+        say('Обработка фото ' + (i+1) + ' из ' + items.length + '…');
+        var p = await toJpeg(items[i]);
+        var pw, ph, orient;
+        if(mode === 'a4'){
+          var land = p.w > p.h;
+          pw = land ? A4[1] : A4[0]; ph = land ? A4[0] : A4[1]; orient = land ? 'l' : 'p';
+        } else {
+          var s = 210 / Math.max(p.w, p.h) * 1.0; // длинная сторона ≈ 210 мм
+          pw = p.w * s + 2*m; ph = p.h * s + 2*m; orient = pw > ph ? 'l' : 'p';
+        }
+        if(!doc){ doc = new window.jspdf.jsPDF({orientation: orient, unit: 'mm', format: [pw, ph]}); }
+        else { doc.addPage([pw, ph], orient); }
+        var aw = pw - 2*m, ah = ph - 2*m;
+        var r = Math.min(aw / p.w, ah / p.h);
+        var iw = p.w * r, ih = p.h * r;
+        doc.addImage(p.data, 'JPEG', (pw - iw)/2, (ph - ih)/2, iw, ih);
+      }
+      var blob = doc.output('blob');
+      var fname = ($('name').value.trim().replace(/[\\\/:*?"<>|'\s]+/g,'_') || 'photos') + '.pdf';
+      say('PDF готов (' + (blob.size/1024/1024).toFixed(2) + ' МБ). Скачивание начинается…');
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 10000);
+      say('✓ Файл сохранён: ' + fname, 'ok');
+    }catch(e){ say(e.message || 'Ошибка при создании PDF.', 'err'); }
+    make.disabled = clearBtn.disabled = items.length === 0;
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
